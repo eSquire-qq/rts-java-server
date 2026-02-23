@@ -68,8 +68,5 @@ public class DevTestMain {
         sleepMs(300);
 
         System.out.println("\n=== TEST done ===");
-
-        // Optional: force exit if any scheduler thread is still alive due to bugs
-        // System.exit(0);
     }
 }
