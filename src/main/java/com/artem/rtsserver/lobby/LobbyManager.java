@@ -93,7 +93,6 @@ public class LobbyManager {
 	public void onDisconnection(int playerId) {
 
 		Lobby lobby = getLobbyByPlayer(playerId);
-		
 		if(lobby != null) {
 			lobby.removePlayer(playerId);
 			lobbyIdByPlayersId.remove(playerId);
