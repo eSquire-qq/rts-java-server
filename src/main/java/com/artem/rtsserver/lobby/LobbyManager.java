@@ -93,6 +93,7 @@ public class LobbyManager {
 	public void onDisconnection(int playerId) {
 
 		Lobby lobby = getLobbyByPlayer(playerId);
+
 		if(lobby != null) {
 			lobby.removePlayer(playerId);
 			lobbyIdByPlayersId.remove(playerId);
@@ -109,6 +110,7 @@ public class LobbyManager {
 		if(matchSession != null) {
 			String matchId = matchSession.getMatchId();
 	        matchManager.endMatchSession(matchId);
+	        // {"type":"match_end","reason":"opponent_disconnected"}
 		}
 		
 	}
