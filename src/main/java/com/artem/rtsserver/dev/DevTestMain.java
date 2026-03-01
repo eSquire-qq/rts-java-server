@@ -9,186 +9,185 @@ import com.artem.rtsserver.net.server.ClientConnection;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-public class DevTestMain {
+/*public class DevTestMain {
 
-    // ====== Test client that captures server outputs ======
-    static class TestClientConnection extends ClientConnection {
-        private final ConcurrentLinkedQueue<String> inbox = new ConcurrentLinkedQueue<>();
+	// ====== Test client that captures server outputs ======
+	/*
+	 * static class TestClientConnection extends ClientConnection { private final
+	 * ConcurrentLinkedQueue<String> inbox = new ConcurrentLinkedQueue<>();
+	 * 
+	 * 
+	 * public TestClientConnection(int playerId) { super(playerId); }
+	 * 
+	 * 
+	 * @Override public void sendLine(String json) { inbox.add(json);
+	 * System.out.println("[TO player=" + getPlayerId() + "] " + json); }
+	 * 
+	 * public String poll() { return inbox.poll(); }
+	 * 
+	 * public void clearInbox() { inbox.clear(); } }
+	 
 
-        public TestClientConnection(int playerId) {
-            super(playerId);
-        }
+	private static final ObjectMapper MAPPER = new ObjectMapper();
 
-        @Override
-        public void sendLine(String json) {
-            inbox.add(json);
-            System.out.println("[TO player=" + getPlayerId() + "] " + json);
-        }
+	public static void main(String[] args) throws Exception {
+		MatchManager matchManager = new MatchManager();
+		LobbyManager lobbyManager = new LobbyManager(matchManager);
+		MessageRouter router = new MessageRouter(lobbyManager, matchManager);
 
-        public String poll() {
-            return inbox.poll();
-        }
+		//TestClientConnection p1 = new TestClientConnection(1);
+		//TestClientConnection p2 = new TestClientConnection(2);
 
-        public void clearInbox() {
-            inbox.clear();
-        }
-    }
+		// ---------------- TEST 1 ----------------
+		System.out.println("\n=== TEST 1: create lobby ===");
+		//router.handle(p1, "{\"type\":\"create_lobby\"}");
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+		//String lobbyId = waitForTypeAndField(p1, "lobby_created", "lobbyId", 1500);
+		System.out.println("TEST lobbyId=" + lobbyId);
 
-    public static void main(String[] args) throws Exception {
-        MatchManager matchManager = new MatchManager();
-        LobbyManager lobbyManager = new LobbyManager(matchManager);
-        MessageRouter router = new MessageRouter(lobbyManager, matchManager);
+		// ---------------- TEST 2 ----------------
+		System.out.println("\n=== TEST 2: join lobby ===");
+		router.handle(p2, "{\"type\":\"join_lobby\",\"lobbyId\":\"" + lobbyId + "\"}");
+		// очікуємо lobby_state (в обох)
+		waitForType(p1, "lobby_state", 1500);
+		waitForType(p2, "lobby_state", 1500);
 
-        TestClientConnection p1 = new TestClientConnection(1);
-        TestClientConnection p2 = new TestClientConnection(2);
+		// ---------------- TEST 3 ----------------
+		System.out.println("\n=== TEST 3: disconnect player2 in lobby (should remove player2, lobby still exists) ===");
+		lobbyManager.onDisconnection(p2.getPlayerId());
 
-        // ---------------- TEST 1 ----------------
-        System.out.println("\n=== TEST 1: create lobby ===");
-        router.handle(p1, "{\"type\":\"create_lobby\"}");
+		// p1 має отримати оновлений lobby_state (без player2)
+		waitForType(p1, "lobby_state", 1500);
 
-        String lobbyId = waitForTypeAndField(p1, "lobby_created", "lobbyId", 1500);
-        System.out.println("TEST lobbyId=" + lobbyId);
+		// player2 вже не в лобі — пробуємо знову приєднатись
+		System.out.println("\n=== TEST 4: player2 re-join lobby after disconnect ===");
+		router.handle(p2, "{\"type\":\"join_lobby\",\"lobbyId\":\"" + lobbyId + "\"}");
+		waitForType(p1, "lobby_state", 1500);
+		waitForType(p2, "lobby_state", 1500);
 
-        // ---------------- TEST 2 ----------------
-        System.out.println("\n=== TEST 2: join lobby ===");
-        router.handle(p2, "{\"type\":\"join_lobby\",\"lobbyId\":\"" + lobbyId + "\"}");
-        // очікуємо lobby_state (в обох)
-        waitForType(p1, "lobby_state", 1500);
-        waitForType(p2, "lobby_state", 1500);
+		// ---------------- TEST 5 ----------------
+		System.out.println("\n=== TEST 5: set_ready both => match_start ===");
+		router.handle(p1, "{\"type\":\"set_ready\",\"ready\":true}");
+		router.handle(p2, "{\"type\":\"set_ready\",\"ready\":true}");
 
-        // ---------------- TEST 3 ----------------
-        System.out.println("\n=== TEST 3: disconnect player2 in lobby (should remove player2, lobby still exists) ===");
-        lobbyManager.onDisconnection(p2.getPlayerId());
+		String matchId1 = waitForTypeAndField(p1, "match_start", "matchId", 2000);
+		String matchId2 = waitForTypeAndField(p2, "match_start", "matchId", 2000);
 
-        // p1 має отримати оновлений lobby_state (без player2)
-        waitForType(p1, "lobby_state", 1500);
+		System.out.println("TEST matchId p1=" + matchId1 + " p2=" + matchId2);
+		System.out.println("p1.isInMatch=" + p1.isInMatch() + " p2.isInMatch=" + p2.isInMatch());
 
-        // player2 вже не в лобі — пробуємо знову приєднатись
-        System.out.println("\n=== TEST 4: player2 re-join lobby after disconnect ===");
-        router.handle(p2, "{\"type\":\"join_lobby\",\"lobbyId\":\"" + lobbyId + "\"}");
-        waitForType(p1, "lobby_state", 1500);
-        waitForType(p2, "lobby_state", 1500);
+		// даємо тікам піти
+		Thread.sleep(250);
 
-        // ---------------- TEST 5 ----------------
-        System.out.println("\n=== TEST 5: set_ready both => match_start ===");
-        router.handle(p1, "{\"type\":\"set_ready\",\"ready\":true}");
-        router.handle(p2, "{\"type\":\"set_ready\",\"ready\":true}");
+		// ---------------- TEST 6 ----------------
+		System.out.println("\n=== TEST 6: cmd_move in match (unit 1 should move) ===");
+		p1.clearInbox();
+		p2.clearInbox();
 
-        String matchId1 = waitForTypeAndField(p1, "match_start", "matchId", 2000);
-        String matchId2 = waitForTypeAndField(p2, "match_start", "matchId", 2000);
+		router.handle(p1, "{\"type\":\"cmd_move\",\"unitId\":1,\"x\":10,\"y\":3}");
 
-        System.out.println("TEST matchId p1=" + matchId1 + " p2=" + matchId2);
-        System.out.println("p1.isInMatch=" + p1.isInMatch() + " p2.isInMatch=" + p2.isInMatch());
+		// почекаємо кілька state пакетів і перевіримо що x/y у unitId=1 не (0,0)
+		boolean moved = waitUntilUnitMoved(p1, 1, 1500);
+		System.out.println("TEST unit moved=" + moved);
 
-        // даємо тікам піти
-        Thread.sleep(250);
+		// ---------------- TEST 7 ----------------
+		System.out.println("\n=== TEST 7: disconnect player2 during match => match ends ===");
+		lobbyManager.onDisconnection(p2.getPlayerId());
 
-        // ---------------- TEST 6 ----------------
-        System.out.println("\n=== TEST 6: cmd_move in match (unit 1 should move) ===");
-        p1.clearInbox();
-        p2.clearInbox();
+		// дати матчу зупинитись та почистити matchId
+		Thread.sleep(250);
+		System.out.println("after disconnect: p1.isInMatch=" + p1.isInMatch() + " p2.isInMatch=" + p2.isInMatch());
 
-        router.handle(p1, "{\"type\":\"cmd_move\",\"unitId\":1,\"x\":10,\"y\":3}");
+		// ---------------- TEST 8 ----------------
+		System.out.println("\n=== TEST 8: cmd_move AFTER match end (should be rejected with not_in_match) ===");
+		p1.clearInbox();
+		router.handle(p1, "{\"type\":\"cmd_move\",\"unitId\":1,\"x\":0,\"y\":0}");
 
-        // почекаємо кілька state пакетів і перевіримо що x/y у unitId=1 не (0,0)
-        boolean moved = waitUntilUnitMoved(p1, 1, 1500);
-        System.out.println("TEST unit moved=" + moved);
+		String errReason = waitForTypeAndField(p1, "error", "reason", 1000);
+		System.out.println("TEST error.reason=" + errReason);
 
-        // ---------------- TEST 7 ----------------
-        System.out.println("\n=== TEST 7: disconnect player2 during match => match ends ===");
-        lobbyManager.onDisconnection(p2.getPlayerId());
+		System.out.println("\n=== TEST done ===");
+	}
 
-        // дати матчу зупинитись та почистити matchId
-        Thread.sleep(250);
-        System.out.println("after disconnect: p1.isInMatch=" + p1.isInMatch() + " p2.isInMatch=" + p2.isInMatch());
+	// ===== Helpers =====
 
-        // ---------------- TEST 8 ----------------
-        System.out.println("\n=== TEST 8: cmd_move AFTER match end (should be rejected with not_in_match) ===");
-        p1.clearInbox();
-        router.handle(p1, "{\"type\":\"cmd_move\",\"unitId\":1,\"x\":0,\"y\":0}");
+	private static JsonNode parseSafe(String json) {
+		try {
+			return MAPPER.readTree(json);
+		} catch (Exception e) {
+			return null;
+		}
+	}
 
-        String errReason = waitForTypeAndField(p1, "error", "reason", 1000);
-        System.out.println("TEST error.reason=" + errReason);
+	private static void waitForType(TestClientConnection c, String type, long timeoutMs) throws Exception {
+		long deadline = System.currentTimeMillis() + timeoutMs;
+		while (System.currentTimeMillis() < deadline) {
+			String msg = c.poll();
+			if (msg != null) {
+				JsonNode root = parseSafe(msg);
+				if (root != null && type.equals(root.path("type").asText())) {
+					return;
+				}
+			} else {
+				Thread.sleep(10);
+			}
+		}
+		throw new RuntimeException("Timeout waiting type='" + type + "' for player " + c.getPlayerId());
+	}
 
-        System.out.println("\n=== TEST done ===");
-    }
+	private static String waitForTypeAndField(TestClientConnection c, String type, String field, long timeoutMs)
+			throws Exception {
+		long deadline = System.currentTimeMillis() + timeoutMs;
+		while (System.currentTimeMillis() < deadline) {
+			String msg = c.poll();
+			if (msg != null) {
+				JsonNode root = parseSafe(msg);
+				if (root != null && type.equals(root.path("type").asText())) {
+					JsonNode v = root.get(field);
+					return v == null ? null : v.asText();
+				}
+			} else {
+				Thread.sleep(10);
+			}
+		}
+		throw new RuntimeException(
+				"Timeout waiting type='" + type + "' field='" + field + "' for player " + c.getPlayerId());
+	}
 
-    // ===== Helpers =====
+	private static boolean waitUntilUnitMoved(TestClientConnection c, int unitId, long timeoutMs) throws Exception {
+		long deadline = System.currentTimeMillis() + timeoutMs;
 
-    private static JsonNode parseSafe(String json) {
-        try {
-            return MAPPER.readTree(json);
-        } catch (Exception e) {
-            return null;
-        }
-    }
+		while (System.currentTimeMillis() < deadline) {
+			String msg = c.poll();
+			if (msg == null) {
+				Thread.sleep(10);
+				continue;
+			}
 
-    private static void waitForType(TestClientConnection c, String type, long timeoutMs) throws Exception {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            String msg = c.poll();
-            if (msg != null) {
-                JsonNode root = parseSafe(msg);
-                if (root != null && type.equals(root.path("type").asText())) {
-                    return;
-                }
-            } else {
-                Thread.sleep(10);
-            }
-        }
-        throw new RuntimeException("Timeout waiting type='" + type + "' for player " + c.getPlayerId());
-    }
+			JsonNode root = parseSafe(msg);
+			if (root == null)
+				continue;
 
-    private static String waitForTypeAndField(TestClientConnection c, String type, String field, long timeoutMs) throws Exception {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            String msg = c.poll();
-            if (msg != null) {
-                JsonNode root = parseSafe(msg);
-                if (root != null && type.equals(root.path("type").asText())) {
-                    JsonNode v = root.get(field);
-                    return v == null ? null : v.asText();
-                }
-            } else {
-                Thread.sleep(10);
-            }
-        }
-        throw new RuntimeException("Timeout waiting type='" + type + "' field='" + field + "' for player " + c.getPlayerId());
-    }
+			if (!"state".equals(root.path("type").asText()))
+				continue;
 
-    private static boolean waitUntilUnitMoved(TestClientConnection c, int unitId, long timeoutMs) throws Exception {
-        long deadline = System.currentTimeMillis() + timeoutMs;
+			JsonNode units = root.path("units");
+			if (!units.isArray())
+				continue;
 
-        while (System.currentTimeMillis() < deadline) {
-            String msg = c.poll();
-            if (msg == null) {
-                Thread.sleep(10);
-                continue;
-            }
+			for (JsonNode u : units) {
+				if (u.path("id").asInt(-1) == unitId) {
+					float x = (float) u.path("x").asDouble(0);
+					float y = (float) u.path("y").asDouble(0);
 
-            JsonNode root = parseSafe(msg);
-            if (root == null) continue;
+					// старт у вас (0,0), тому будь-який рух = (x != 0 || y != 0)
+					if (Math.abs(x) > 0.0001f || Math.abs(y) > 0.0001f) {
+						return true;
+					}
+				}
+			}
+		}
 
-            if (!"state".equals(root.path("type").asText())) continue;
-
-            JsonNode units = root.path("units");
-            if (!units.isArray()) continue;
-
-            for (JsonNode u : units) {
-                if (u.path("id").asInt(-1) == unitId) {
-                    float x = (float) u.path("x").asDouble(0);
-                    float y = (float) u.path("y").asDouble(0);
-
-                    // старт у вас (0,0), тому будь-який рух = (x != 0 || y != 0)
-                    if (Math.abs(x) > 0.0001f || Math.abs(y) > 0.0001f) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-}
+		return false;
+	}
+}*/

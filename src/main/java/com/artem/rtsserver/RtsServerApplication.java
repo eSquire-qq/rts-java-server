@@ -10,15 +10,15 @@ import com.artem.rtsserver.net.server.TcpServer;
 @SpringBootApplication
 public class RtsServerApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(RtsServerApplication.class, args);
-	}
-	
-	@Bean
-	CommandLineRunner startTcpServer(TcpServer tcpServer) {
-	    return args -> {
-	        tcpServer.start(7777);
-	    };
-	}
-}
+    public static void main(String[] args) {
+        SpringApplication.run(RtsServerApplication.class, args);
+    }
 
+    @Bean
+    CommandLineRunner startTcpServer(TcpServer tcpServer) {
+        return args -> {
+            int port = 7777;
+            tcpServer.start(port);
+        };
+    }
+}

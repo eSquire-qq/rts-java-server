@@ -8,7 +8,9 @@ import java.util.Random;
 import com.artem.rtsserver.match.MatchManager;
 import com.artem.rtsserver.match.MatchSession;
 import com.artem.rtsserver.net.server.ClientConnection;
+import org.springframework.stereotype.Component;
 
+@Component
 public class LobbyManager {
 
 	private final Map<String, Lobby> lobbiesById = new HashMap<>();
@@ -151,7 +153,20 @@ public class LobbyManager {
 			}
 		}
 
-		if (!lobby.isStarted() && lobby.getPlayers().size() == 2 && allReady) {
+		if (!lobby.isStarted() && lobby.getPlayers().size() >= 1 && allReady) {
+		    lobby.start();
+		    String matchId = matchManager.createMatch(lobby.getPlayers());
+
+		    for (LobbyPlayer player : lobby.getPlayers()) {
+		        player.getConn().setMatchId(matchId);
+		        player.getConn().sendLine("{\"type\":\"match_start\",\"matchId\":\"" + matchId + "\"}");
+		        lobbyIdByPlayersId.remove(player.getPlayerId());
+		    }
+		    System.out.println("MATCH START: " + lobby.getLobbyId());
+		    lobbiesById.remove(lobby.getLobbyId());
+		}
+		
+		/*if (!lobby.isStarted() && lobby.getPlayers().size() >= 1 && allReady) { // Замінити після тесту >= 1 на == 2
 			lobby.start();
 
 			String matchId = matchManager.createMatch(lobby.getPlayers());
@@ -164,7 +179,9 @@ public class LobbyManager {
 			System.out.println("MATCH START: " + lobby.getLobbyId());
 			lobbiesById.remove(lobby.getLobbyId());
 		}
-	}
+		System.out.println("maybeStartMatch: players=" + lobby.getPlayers().size()
+			    + " allReady=" + allReady + " started=" + lobby.isStarted());
+	*/}
 
 	private Lobby getLobbyByPlayer(int playerId) {
 

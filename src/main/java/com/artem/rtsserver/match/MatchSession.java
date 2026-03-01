@@ -11,159 +11,203 @@ import java.util.concurrent.TimeUnit;
 
 import com.artem.rtsserver.lobby.LobbyPlayer;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class MatchSession {
 
-	public List<LobbyPlayer> getPlayers() {
-		return players;
-	}
+    public List<LobbyPlayer> getPlayers() { return players; }
 
-	private final String matchId;
-	private int tickNumber;
+    private final String matchId;
+    private int tickNumber;
 
-	private final List<LobbyPlayer> players;
-	private final Queue<PlayerCommand> commandQueue = new ConcurrentLinkedQueue<>();
-	private ScheduledExecutorService scheduler;
+    private final List<LobbyPlayer> players;
+    private final Queue<PlayerCommand> commandQueue = new ConcurrentLinkedQueue<>();
+    private ScheduledExecutorService scheduler;
 
-	private final MatchManager matchManager;
+    private final MatchManager matchManager;
 
-	private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = new ObjectMapper();
 
-	Map<Integer, UnitState> units = new HashMap<>();
+    private final Map<Integer, UnitState> units = new HashMap<>();
 
-	public MatchSession(String matchId, List<LobbyPlayer> players, MatchManager matchManager) {
-		this.matchId = matchId;
-		this.players = players;
-		this.tickNumber = 0;
-		this.matchManager = matchManager;
-	}
+    // простий world bounds (потім можна замінити на карту/колізії)
+    private static final float WORLD_MIN_X = -50f;
+    private static final float WORLD_MAX_X = 50f;
+    private static final float WORLD_MIN_Y = -50f;
+    private static final float WORLD_MAX_Y = 50f;
 
-	public void start() {
+    public MatchSession(String matchId, List<LobbyPlayer> players, MatchManager matchManager) {
+        this.matchId = matchId;
+        this.players = players;
+        this.tickNumber = 0;
+        this.matchManager = matchManager;
+    }
 
-		int player1Id = players.get(0).getPlayerId();
-		int player2Id = players.get(1).getPlayerId();
+    public void start() {
 
-		units.put(1, new UnitState(1, player1Id, 0f, 0f, 0f, 0f, false));
-		units.put(2, new UnitState(2, player2Id, 5f, 0f, 5f, 0f, false));
+        int player1Id = players.get(0).getPlayerId();
+        units.put(1, new UnitState(1, player1Id, 0f, 0f, 0f, 0f, false));
 
-		scheduler = Executors.newSingleThreadScheduledExecutor();
-		scheduler.scheduleAtFixedRate(() -> {
-			try {
-				tick();
-			} catch (JsonProcessingException e) {
-				e.printStackTrace();
-			}
-		}, 0, 50, TimeUnit.MILLISECONDS);
-	}
+        if (players.size() >= 2) {
+            int player2Id = players.get(1).getPlayerId();
+            units.put(2, new UnitState(2, player2Id, 5f, 0f, 5f, 0f, false));
+        }
 
-	private void tick() throws JsonMappingException, JsonProcessingException {
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                tick();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, 0, 50, TimeUnit.MILLISECONDS);
+    }
+    
+    /*public void start() {
+        int player1Id = players.get(0).getPlayerId();
+        int player2Id = players.get(1).getPlayerId();
 
-		PlayerCommand cmd;
-		tickNumber++;
+        units.put(1, new UnitState(1, player1Id, 0f, 0f, 0f, 0f, false));
+        units.put(2, new UnitState(2, player2Id, 5f, 0f, 5f, 0f, false));
 
-		while ((cmd = commandQueue.poll()) != null) {
-			if (cmd.json.contains("\"type\":\"cmd_end_match\"")) {
-				matchManager.endMatchSession(matchId);
-				return;
-			}
-			if (cmd.json.contains("\"type\":\"cmd_move\"")) {
-				JsonNode root = mapper.readTree(cmd.json);
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                tick();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, 0, 50, TimeUnit.MILLISECONDS);
+   } */
 
-				int unitId = root.path("unitId").asInt(-1);
-				float x = (float) root.path("x").asDouble();
-				float y = (float) root.path("y").asDouble();
+    private void tick() throws JsonProcessingException {
+        tickNumber++;
 
-				UnitState unitState = units.get(unitId);
+        PlayerCommand cmd;
+        while ((cmd = commandQueue.poll()) != null) {
+            handleCommand(cmd);
+        }
 
-				if (unitState == null) {
-					continue;
-				}
+        simulateUnits(0.05f);
 
-				if (unitState.getOwnerPlayerId() != cmd.playerId) {
-					continue;
-				}
-				unitState.setTarget(x, y);
-			}
+        String stateJson = buildStateJson();
+        for (LobbyPlayer player : players) {
+            player.getConn().sendLine(stateJson);
+        }
+    }
 
-			System.out.println("tick=" + tickNumber + " cmd=" + cmd.json);
-		}
+    private void handleCommand(PlayerCommand cmd) throws JsonProcessingException {
+        JsonNode root = mapper.readTree(cmd.json);
+        String type = root.path("type").asText("");
 
-		simulateUnits(0.05f);
-		String stateJson = buildStateJson();
+        switch (type) {
+            case "cmd_move":
+                handleMove(cmd.playerId, root);
+                break;
 
-		for (LobbyPlayer player : players) {
-			player.getConn().sendLine(stateJson);
-		}
-	}
+            case "cmd_end_match":
+                handleEndMatch(cmd.playerId);
+                break;
 
-	private String buildStateJson() {
-		StringBuilder sb = new StringBuilder(256);
-		sb.append("{\"type\":\"state\",\"tick\":").append(tickNumber).append(",\"units\":[");
+            default:
+                // невідомі команди в матчі просто ігноруємо (або лог)
+                System.out.println("[MATCH " + matchId + "] unknown cmd type=" + type + " json=" + cmd.json);
+                break;
+        }
+    }
 
-		boolean first = true;
-		for (UnitState u : units.values()) {
-			if (!first)
-				sb.append(',');
-			first = false;
+    private void handleMove(int playerId, JsonNode root) {
+        int unitId = root.path("unitId").asInt(-1);
+        float x = (float) root.path("x").asDouble(Double.NaN);
+        float y = (float) root.path("y").asDouble(Double.NaN);
 
-			sb.append("{\"id\":").append(u.getId()).append(",\"owner\":").append(u.getOwnerPlayerId()).append(",\"x\":")
-					.append(u.getX()).append(",\"y\":").append(u.getY()).append('}');
-		}
+        if (unitId <= 0) return;
+        if (!Float.isFinite(x) || !Float.isFinite(y)) return;
 
-		sb.append("]}");
-		return sb.toString();
-	}
+        // bounds clamp або reject (я зроблю clamp, щоб було м’якше)
+        x = clamp(x, WORLD_MIN_X, WORLD_MAX_X);
+        y = clamp(y, WORLD_MIN_Y, WORLD_MAX_Y);
 
-	public void stop() {
-		if (scheduler != null) {
-			scheduler.shutdown();
-		}
-	}
+        UnitState unit = units.get(unitId);
+        if (unit == null) return;
 
-	public void handleCommand(int playerId, String json) {
-		System.out.println("[MATCH " + matchId + "] cmd from " + playerId + ": " + json);
-	}
+        // owner-check: гравець може керувати тільки своїми
+        if (unit.getOwnerPlayerId() != playerId) return;
 
-	public void enqueueCommand(int playerId, String json) {
-		commandQueue.add(new PlayerCommand(playerId, json));
-	}
+        unit.setTarget(x, y);
+    }
 
-	private void simulateUnits(float dt) {
-		float speed = 3f;
-		float maxStep = speed * dt;
+    private void handleEndMatch(int playerId) {
+        // тут пізніше можна перевіряти "чи має право" завершувати матч
+        matchManager.endMatchSession(matchId);
+    }
 
-		for (UnitState u : units.values()) {
-			if (!u.getHasTarget())
-				continue;
+    private static float clamp(float v, float min, float max) {
+        if (v < min) return min;
+        if (v > max) return max;
+        return v;
+    }
 
-			float dx = u.getTargetX() - u.getX();
-			float dy = u.getTargetY() - u.getY();
-			float distSq = dx * dx + dy * dy;
+    private String buildStateJson() {
+        StringBuilder sb = new StringBuilder(256);
+        sb.append("{\"type\":\"state\",\"tick\":").append(tickNumber).append(",\"units\":[");
 
-			if (distSq < 0.0001f) {
-				u.setPosition(u.getTargetX(), u.getTargetY());
-				u.clearTarget();
-				continue;
-			}
+        boolean first = true;
+        for (UnitState u : units.values()) {
+            if (!first) sb.append(',');
+            first = false;
 
-			float dist = (float) Math.sqrt(distSq);
+            sb.append("{\"id\":").append(u.getId())
+              .append(",\"owner\":").append(u.getOwnerPlayerId())
+              .append(",\"x\":").append(u.getX())
+              .append(",\"y\":").append(u.getY())
+              .append('}');
+        }
 
-			if (dist <= maxStep) {
-				u.setPosition(u.getTargetX(), u.getTargetY());
-				u.clearTarget();
-			} else {
-				float nx = dx / dist;
-				float ny = dy / dist;
-				u.setPosition(u.getX() + nx * maxStep, u.getY() + ny * maxStep);
-			}
-		}
-	}
+        sb.append("]}");
+        return sb.toString();
+    }
 
-	public String getMatchId() {
-		return matchId;
-	}
+    public void stop() {
+        if (scheduler != null) scheduler.shutdown();
+    }
 
+    public void enqueueCommand(int playerId, String json) {
+        commandQueue.add(new PlayerCommand(playerId, json));
+    }
+
+    private void simulateUnits(float dt) {
+        float speed = 3f;
+        float maxStep = speed * dt;
+
+        for (UnitState u : units.values()) {
+            if (!u.getHasTarget()) continue;
+
+            float dx = u.getTargetX() - u.getX();
+            float dy = u.getTargetY() - u.getY();
+            float distSq = dx * dx + dy * dy;
+
+            if (distSq < 0.0001f) {
+                u.setPosition(u.getTargetX(), u.getTargetY());
+                u.clearTarget();
+                continue;
+            }
+
+            float dist = (float) Math.sqrt(distSq);
+
+            if (dist <= maxStep) {
+                u.setPosition(u.getTargetX(), u.getTargetY());
+                u.clearTarget();
+            } else {
+                float nx = dx / dist;
+                float ny = dy / dist;
+                u.setPosition(u.getX() + nx * maxStep, u.getY() + ny * maxStep);
+            }
+        }
+    }
+
+    public String getMatchId() {
+    	return matchId; 
+    }
 }

@@ -5,9 +5,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import org.springframework.stereotype.Component;
+
 import com.artem.rtsserver.lobby.LobbyPlayer;
 import com.artem.rtsserver.net.server.ClientConnection;
 
+
+@Component
 public class MatchManager {
 	
 	private final Map<String, MatchSession> matchesById = new HashMap<>();
