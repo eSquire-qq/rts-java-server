@@ -9,19 +9,26 @@ public class UnitState {
     private float targetX, targetY;
     private boolean hasTarget;
 
-    // --- combat ---
-    private int hp = 100;
-    private int maxHp = 100;
+    // Конфіг юніта
+    private final UnitStats stats;
 
+    // Поточний стан юніта
+    private int hp;
     private int attackTargetId = -1;
-
-    private float attackRange = 2f;
-    private int attackDamage = 10;
-
-    private float attackCooldown = 1f;
     private float attackTimer = 0f;
+    
+    private boolean attackTargetIsBuilding = false;
 
-    public UnitState(int id, int ownerPlayerId, float x, float y, float targetX, float targetY, boolean hasTarget) {
+    public UnitState(
+            int id,
+            int ownerPlayerId,
+            float x,
+            float y,
+            float targetX,
+            float targetY,
+            boolean hasTarget,
+            UnitStats stats
+    ) {
         this.id = id;
         this.ownerPlayerId = ownerPlayerId;
         this.x = x;
@@ -29,6 +36,8 @@ public class UnitState {
         this.targetX = targetX;
         this.targetY = targetY;
         this.hasTarget = hasTarget;
+        this.stats = stats;
+        this.hp = stats.getMaxHp();
     }
 
     // ---------------- movement ----------------
@@ -54,6 +63,11 @@ public class UnitState {
         this.attackTargetId = targetId;
     }
 
+    public void clearAttackTarget() {
+        this.attackTargetId = -1;
+        this.attackTargetIsBuilding = false;
+    }
+
     public int getAttackTargetId() {
         return attackTargetId;
     }
@@ -63,7 +77,7 @@ public class UnitState {
     }
 
     public void resetAttackTimer() {
-        attackTimer = attackCooldown;
+        attackTimer = stats.getAttackCooldown();
     }
 
     public void updateAttackTimer(float dt) {
@@ -115,14 +129,26 @@ public class UnitState {
     }
 
     public int getMaxHp() {
-        return maxHp;
+        return stats.getMaxHp();
     }
 
     public float getAttackRange() {
-        return attackRange;
+        return stats.getAttackRange();
     }
 
     public int getAttackDamage() {
-        return attackDamage;
+        return stats.getAttackDamage();
+    }
+
+    public float getMoveSpeed() {
+        return stats.getMoveSpeed();
+    }
+    
+    public void setAttackTargetIsBuilding(boolean value) {
+        this.attackTargetIsBuilding = value;
+    }
+
+    public boolean isAttackTargetBuilding() {
+        return attackTargetIsBuilding;
     }
 }
