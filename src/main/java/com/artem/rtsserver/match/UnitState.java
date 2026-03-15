@@ -1,154 +1,141 @@
 package com.artem.rtsserver.match;
 
 public class UnitState {
+	private int id;
+	private int ownerPlayerId;
 
-    private int id;
-    private int ownerPlayerId;
+	private float x, y;
+	private float targetX, targetY;
+	private boolean hasTarget;
+	private final String unitType;
 
-    private float x, y;
-    private float targetX, targetY;
-    private boolean hasTarget;
+	private final UnitStats stats;
 
-    // Конфіг юніта
-    private final UnitStats stats;
+	private int hp;
+	private int attackTargetId = -1;
+	private float attackTimer = 0f;
+	private boolean attackTargetIsBuilding = false;
 
-    // Поточний стан юніта
-    private int hp;
-    private int attackTargetId = -1;
-    private float attackTimer = 0f;
-    
-    private boolean attackTargetIsBuilding = false;
+	public UnitState(int id, int ownerPlayerId, float x, float y, float targetX, float targetY, boolean hasTarget,
+			UnitStats stats, String unitType) {
+		this.id = id;
+		this.ownerPlayerId = ownerPlayerId;
+		this.x = x;
+		this.y = y;
+		this.targetX = targetX;
+		this.targetY = targetY;
+		this.hasTarget = hasTarget;
+		this.stats = stats;
+		this.hp = stats.getMaxHp();
+		this.unitType = unitType;
+	}
 
-    public UnitState(
-            int id,
-            int ownerPlayerId,
-            float x,
-            float y,
-            float targetX,
-            float targetY,
-            boolean hasTarget,
-            UnitStats stats
-    ) {
-        this.id = id;
-        this.ownerPlayerId = ownerPlayerId;
-        this.x = x;
-        this.y = y;
-        this.targetX = targetX;
-        this.targetY = targetY;
-        this.hasTarget = hasTarget;
-        this.stats = stats;
-        this.hp = stats.getMaxHp();
-    }
+	public void setTarget(float x, float y) {
+		this.targetX = x;
+		this.targetY = y;
+		this.hasTarget = true;
+	}
 
-    // ---------------- movement ----------------
+	public void clearTarget() {
+		hasTarget = false;
+	}
 
-    public void setTarget(float x, float y) {
-        this.targetX = x;
-        this.targetY = y;
-        this.hasTarget = true;
-    }
+	public void setPosition(float x, float y) {
+		this.x = x;
+		this.y = y;
+	}
 
-    public void clearTarget() {
-        hasTarget = false;
-    }
+	public void setAttackTarget(int targetId) {
+		this.attackTargetId = targetId;
+	}
 
-    public void setPosition(float x, float y) {
-        this.x = x;
-        this.y = y;
-    }
+	public void clearAttackTarget() {
+		attackTargetId = -1;
+		attackTargetIsBuilding = false;
+	}
 
-    // ---------------- combat ----------------
+	public int getAttackTargetId() {
+		return attackTargetId;
+	}
 
-    public void setAttackTarget(int targetId) {
-        this.attackTargetId = targetId;
-    }
+	public boolean canAttack() {
+		return attackTimer <= 0f;
+	}
 
-    public void clearAttackTarget() {
-        this.attackTargetId = -1;
-        this.attackTargetIsBuilding = false;
-    }
+	public void resetAttackTimer() {
+		attackTimer = stats.getAttackCooldown();
+	}
 
-    public int getAttackTargetId() {
-        return attackTargetId;
-    }
+	public void updateAttackTimer(float dt) {
+		if (attackTimer > 0f)
+			attackTimer -= dt;
+	}
 
-    public boolean canAttack() {
-        return attackTimer <= 0f;
-    }
+	public void damage(int dmg) {
+		hp -= dmg;
+	}
 
-    public void resetAttackTimer() {
-        attackTimer = stats.getAttackCooldown();
-    }
+	public boolean isDead() {
+		return hp <= 0;
+	}
 
-    public void updateAttackTimer(float dt) {
-        if (attackTimer > 0f) {
-            attackTimer -= dt;
-        }
-    }
+	public int getId() {
+		return id;
+	}
 
-    public void damage(int dmg) {
-        hp -= dmg;
-    }
+	public int getOwnerPlayerId() {
+		return ownerPlayerId;
+	}
 
-    public boolean isDead() {
-        return hp <= 0;
-    }
+	public float getX() {
+		return x;
+	}
 
-    // ---------------- getters ----------------
+	public float getY() {
+		return y;
+	}
 
-    public int getId() {
-        return id;
-    }
+	public float getTargetX() {
+		return targetX;
+	}
 
-    public int getOwnerPlayerId() {
-        return ownerPlayerId;
-    }
+	public float getTargetY() {
+		return targetY;
+	}
 
-    public float getX() {
-        return x;
-    }
+	public boolean getHasTarget() {
+		return hasTarget;
+	}
 
-    public float getY() {
-        return y;
-    }
+	public int getHp() {
+		return hp;
+	}
 
-    public float getTargetX() {
-        return targetX;
-    }
+	public int getMaxHp() {
+		return stats.getMaxHp();
+	}
 
-    public float getTargetY() {
-        return targetY;
-    }
+	public float getAttackRange() {
+		return stats.getAttackRange();
+	}
 
-    public boolean getHasTarget() {
-        return hasTarget;
-    }
+	public int getAttackDamage() {
+		return stats.getAttackDamage();
+	}
 
-    public int getHp() {
-        return hp;
-    }
+	public float getMoveSpeed() {
+		return stats.getMoveSpeed();
+	}
 
-    public int getMaxHp() {
-        return stats.getMaxHp();
-    }
+	public String getUnitType() {
+		return unitType;
+	}
 
-    public float getAttackRange() {
-        return stats.getAttackRange();
-    }
+	public void setAttackTargetIsBuilding(boolean value) {
+		this.attackTargetIsBuilding = value;
+	}
 
-    public int getAttackDamage() {
-        return stats.getAttackDamage();
-    }
-
-    public float getMoveSpeed() {
-        return stats.getMoveSpeed();
-    }
-    
-    public void setAttackTargetIsBuilding(boolean value) {
-        this.attackTargetIsBuilding = value;
-    }
-
-    public boolean isAttackTargetBuilding() {
-        return attackTargetIsBuilding;
-    }
+	public boolean isAttackTargetBuilding() {
+		return attackTargetIsBuilding;
+	}
 }

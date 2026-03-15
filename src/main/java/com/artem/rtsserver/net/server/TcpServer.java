@@ -48,7 +48,6 @@ public class TcpServer {
 
                 System.out.println("Client connected: " + socket.getRemoteSocketAddress() + " as playerId=" + playerId);
 
-                // Відправимо одразу hello (щоб Unity знала playerId)
                 client.sendLine("{\"type\":\"hello\",\"playerId\":" + playerId + "}");
 
                 Thread clientThread = new Thread(() -> handleClient(client, in), "client-" + playerId);
@@ -68,7 +67,7 @@ public class TcpServer {
         try {
             String line;
             while ((line = in.readLine()) != null) {
-                // Клієнт -> сервер
+
                 System.out.println("[FROM player=" + playerId + "] " + line);
                 router.handle(client, line);
                 System.out.println("RAW FROM CLIENT: [" + line + "]");
@@ -78,7 +77,6 @@ public class TcpServer {
         } finally {
             System.out.println("Client disconnected playerId=" + playerId);
 
-            // Важливо: прибираємо гравця з lobby/match
             lobbyManager.onDisconnection(playerId);
 
             client.closeQuietly();
