@@ -10,6 +10,9 @@ public class PlayerState {
     private int usedSupply;
     private int maxSupply;
 
+    private int gatherTargetId = -1;
+    private float gatherTimer = 0f;
+    
     public PlayerState(int playerId, int gold, int lumber, int usedSupply, int maxSupply) {
         this.playerId = playerId;
         this.gold = gold;
@@ -69,4 +72,21 @@ public class PlayerState {
         if (maxSupply < 0) maxSupply = 0;
         if (usedSupply > maxSupply) usedSupply = maxSupply;
     }
+    
+    public void addGold(int amount) {
+        gold += amount;
+    }
+
+    public void addLumber(int amount) {
+        lumber += amount;
+    }
+    
+    public void setGatherTarget(int id) {
+        this.gatherTargetId = id;
+    }
+
+    public int getGatherTarget() {
+        return gatherTargetId;
+    }
+    
 }

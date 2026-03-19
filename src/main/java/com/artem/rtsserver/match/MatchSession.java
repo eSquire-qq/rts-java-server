@@ -33,7 +33,10 @@ public class MatchSession {
 
 	private final Map<Integer, UnitState> units = new HashMap<>();
 	private final Map<Integer, BuildingState> buildings = new HashMap<>();
-
+	private final Map<Integer, PlayerState> playersState = new HashMap<>();
+	private final Map<String, UnitStats> unitStatsMap = new HashMap<>();
+	private final Map<Integer, ResourceNode> resourceNodes = new HashMap<>();
+	
 	private static final float WORLD_MIN_X = -50f;
 	private static final float WORLD_MAX_X = 50f;
 	private static final float WORLD_MIN_Y = -50f;
@@ -49,8 +52,46 @@ public class MatchSession {
 	public void start() {
 	    int player1Id = players.get(0).getPlayerId();
 
-	    UnitStats swordsmanStats = new UnitStats(100, 2f, 10, 1f, 3f);
-	    UnitStats archerStats = new UnitStats(70, 5f, 7, 1.2f, 2.5f);
+	    unitStatsMap.put("swordsman", new UnitStats(100, 2f, 10, 1f, 3f, 100, 0, 2));
+	    unitStatsMap.put("archer", new UnitStats(70, 5f, 7, 1.2f, 2.5f, 125, 25, 2));
+	    
+	    resourceNodes.put(1, new ResourceNode(1, "gold", 0f, 5f, 1000));
+	    resourceNodes.put(2, new ResourceNode(2, "lumber", 3f, 6f, 1000));
+	    
+	    unitStatsMap.put("worker", new UnitStats(
+	    	    50,   // hp
+	    	    1f,   // range
+	    	    2,    // damage
+	    	    1f,   // cooldown
+	    	    3f,   // speed
+	    	    50,   // gold
+	    	    0,    // lumber
+	    	    1     // supply
+	    	));
+	    
+	    UnitStats swordsmanStats = new UnitStats(
+	        100,  // maxHp
+	        2f,   // attackRange
+	        10,   // attackDamage
+	        1f,   // attackCooldown
+	        3f,   // moveSpeed
+	        100,  // goldCost
+	        0,    // lumberCost
+	        2     // supplyCost
+	    );
+
+	    UnitStats archerStats = new UnitStats(
+	        70,
+	        5f,
+	        7,
+	        1.2f,
+	        2.5f,
+	        125,
+	        25,
+	        2
+	    );
+
+	    playersState.put(player1Id, new PlayerState(player1Id, 500, 200, 0, 10));
 
 	    units.put(1, new UnitState(
 	        1,
@@ -61,9 +102,12 @@ public class MatchSession {
 	        swordsmanStats,
 	        "swordsman"
 	    ));
+	    playersState.get(player1Id).addUsedSupply(swordsmanStats.getSupplyCost());
 
 	    if (players.size() >= 2) {
 	        int player2Id = players.get(1).getPlayerId();
+
+	        playersState.put(player2Id, new PlayerState(player2Id, 500, 200, 0, 10));
 
 	        units.put(2, new UnitState(
 	            2,
@@ -74,11 +118,14 @@ public class MatchSession {
 	            archerStats,
 	            "archer"
 	        ));
+	        playersState.get(player2Id).addUsedSupply(archerStats.getSupplyCost());
 
-	        buildings.put(1, new BuildingState(1, player1Id, "base", -4f, 0f, 300));
-	        buildings.put(2, new BuildingState(2, player2Id, "base", 9f, 0f, 300));
+	        buildings.put(1, new BuildingState(1, player1Id, "barracks", -4f, 0f, 300));
+	        buildings.put(2, new BuildingState(2, player1Id, "archery", -6f, 0f, 300));
 	    } else {
 	        int dummyEnemyOwnerId = -1;
+
+	        playersState.put(dummyEnemyOwnerId, new PlayerState(dummyEnemyOwnerId, 500, 200, 0, 10));
 
 	        units.put(2, new UnitState(
 	            2,
@@ -89,9 +136,10 @@ public class MatchSession {
 	            archerStats,
 	            "archer"
 	        ));
+	        playersState.get(dummyEnemyOwnerId).addUsedSupply(archerStats.getSupplyCost());
 
-	        buildings.put(1, new BuildingState(1, player1Id, "base", -4f, -3f, 300));
-	        buildings.put(2, new BuildingState(2, dummyEnemyOwnerId, "base", 7f, 0f, 300));
+	        buildings.put(1, new BuildingState(1, player1Id, "barracks", -4f, 0f, 300));
+	        buildings.put(2, new BuildingState(2, player1Id, "archery", -6f, 0f, 300));
 	    }
 
 	    scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -116,13 +164,63 @@ public class MatchSession {
 		simulateUnits(0.05f);
 		simulateCombat(0.05f);
 		simulateBuildingProduction(0.05f);
+		generateResources();
+		simulateGathering(0.05f);
 		
 		String stateJson = buildStateJson();
 		for (LobbyPlayer player : players) {
 			player.getConn().sendLine(stateJson);
-		}
+		}	
 	}
 
+	private void simulateGathering(float dt) {
+	    for (UnitState unit : units.values()) {
+
+	        if (unit.getGatherTarget() <= 0) continue;
+
+	        ResourceNode node = resourceNodes.get(unit.getGatherTarget());
+	        if (node == null) continue;
+
+	        float dx = node.x - unit.getX();
+	        float dy = node.y - unit.getY();
+	        float dist = (float)Math.sqrt(dx*dx + dy*dy);
+
+	        if (dist > 1.5f) {
+	            unit.setTarget(node.x, node.y);
+	            continue;
+	        }
+
+	        unit.addGatherTime(dt);
+
+	        if (unit.isReadyToGather()) {
+	            unit.resetGatherTimer();
+
+	            PlayerState player = playersState.get(unit.getOwnerPlayerId());
+	            if (player == null) continue;
+
+	            if ("gold".equals(node.type)) {
+	                player.addGold(10);
+	            } else {
+	                player.addLumber(10);
+	            }
+
+	            node.amount -= 10;
+
+	            if (node.amount <= 0) {
+	                resourceNodes.remove(node.id);
+	                unit.setGatherTarget(-1);
+	            }
+	        }
+	    }
+	}
+	
+	private void generateResources() {
+	    for (PlayerState player : playersState.values()) {
+	        player.addGold(1);
+	        player.addLumber(1);
+	    }
+	}
+	
 	private void handleCommand(PlayerCommand cmd) throws JsonProcessingException {
 		JsonNode root = mapper.readTree(cmd.json);
 		String type = root.path("type").asText("");
@@ -150,6 +248,14 @@ public class MatchSession {
 
 		case "cmd_train_unit":
 		    handleTrainUnit(cmd.playerId, root);
+		    break;
+		
+		case "cmd_build":
+			handleBuild(cmd.playerId, root);
+		    break;
+		    
+		case "cmd_gather":
+		    handleGather(cmd.playerId, root);
 		    break;
 
 		default:
@@ -210,6 +316,19 @@ public class MatchSession {
 		attacker.setAttackTargetIsBuilding(false);
 	}
 
+	private void handleGather(int playerId, JsonNode root) {
+	    int unitId = root.path("unitId").asInt(-1);
+	    int resourceId = root.path("resourceId").asInt(-1);
+
+	    UnitState unit = units.get(unitId);
+	    ResourceNode resource = resourceNodes.get(resourceId);
+
+	    if (unit == null || resource == null) return;
+	    if (unit.getOwnerPlayerId() != playerId) return;
+
+	    unit.setGatherTarget(resourceId);
+	}
+	
 	private void handleAttackBuilding(int playerId, JsonNode root) {
 		int attackerId = root.path("unitId").asInt(-1);
 		int targetBuildingId = root.path("targetId").asInt(-1);
@@ -251,8 +370,7 @@ public class MatchSession {
 	    int buildingId = root.path("buildingId").asInt(-1);
 	    String unitType = root.path("unitType").asText("");
 
-	    if (buildingId <= 0) return;
-	    if (unitType.isEmpty()) return;
+	    if (buildingId <= 0 || unitType.isEmpty()) return;
 
 	    BuildingState building = buildings.get(buildingId);
 	    if (building == null) return;
@@ -260,37 +378,115 @@ public class MatchSession {
 	    if (building.getOwnerPlayerId() != playerId) return;
 	    if (building.isTraining()) return;
 
-	    if (!"base".equals(building.getBuildingType())) return;
+	    PlayerState player = playersState.get(playerId);
+	    if (player == null) return;
 
-	    // Поки що тільки один тип юніта для MVP
-	    if (!"swordsman".equals(unitType)) return;
+	    UnitStats stats = getStatsForUnitType(unitType);
+	    if (stats == null) return;
 
-	    building.startTraining(unitType, 3f); // 3 секунди тренування
+	    if (!canTrainInBuilding(unitType, building.getBuildingType())) {
+	        System.out.println("TRAIN DENIED: wrong building");
+	        return;
+	    }
+
+	    if (!player.hasEnoughResources(stats.getGoldCost(), stats.getLumberCost())) {
+	        System.out.println("TRAIN DENIED: not enough resources");
+	        return;
+	    }
+
+	    if (!player.hasEnoughSupply(stats.getSupplyCost())) {
+	        System.out.println("TRAIN DENIED: not enough supply");
+	        return;
+	    }
+	   
+	    player.spendResources(stats.getGoldCost(), stats.getLumberCost());
+
+	    building.startTraining(unitType, 3f);
 	}
 
+	private void handleBuild(int playerId, JsonNode root) {
+	    String buildingType = root.path("buildingType").asText("");
+	    float x = (float) root.path("x").asDouble();
+	    float y = (float) root.path("y").asDouble();
+
+	    if (buildingType.isEmpty()) return;
+
+	    PlayerState player = playersState.get(playerId);
+	    if (player == null) return;
+
+	    int goldCost = 0;
+	    int lumberCost = 0;
+
+	    switch (buildingType) {
+	        case "barracks":
+	            goldCost = 200;
+	            lumberCost = 50;
+	            break;
+
+	        case "archery":
+	            goldCost = 150;
+	            lumberCost = 100;
+	            break;
+
+	        case "house":
+	            goldCost = 100;
+	            lumberCost = 50;
+	            break;
+
+	        default:
+	            return;
+	    }
+
+	    if (!player.hasEnoughResources(goldCost, lumberCost)) {
+	        System.out.println("BUILD DENIED: not enough resources");
+	        return;
+	    }
+
+	    x = clamp(x, WORLD_MIN_X, WORLD_MAX_X);
+	    y = clamp(y, WORLD_MIN_Y, WORLD_MAX_Y);
+
+	    player.spendResources(goldCost, lumberCost);
+
+	    int newBuildingId = generateNextBuildingId();
+
+	    BuildingState building = new BuildingState(
+	        newBuildingId,
+	        playerId,
+	        buildingType,
+	        x,
+	        y,
+	        300
+	    );
+
+	    buildings.put(newBuildingId, building);
+
+	    applyBuildingEffect(player, buildingType);
+	}
+	
+	private void applyBuildingEffect(PlayerState player, String buildingType) {
+	    if ("house".equals(buildingType)) {
+	        player.addMaxSupply(5);
+	    }
+	}
+	
+	private int generateNextBuildingId() {
+	    int maxId = 0;
+	    for (Integer id : buildings.keySet()) {
+	        if (id > maxId) maxId = id;
+	    }
+	    return maxId + 1;
+	}
+	
+	private boolean canTrainInBuilding(String unitType, String buildingType) {
+	    if ("swordsman".equals(unitType) && "barracks".equals(buildingType)) return true;
+	    if ("archer".equals(unitType) && "archery".equals(buildingType)) return true;
+	    
+	    return false;
+	}
 
 	private void handleEndMatch(int playerId) {
 		matchManager.endMatchSession(matchId);
 	}
-
-	/*
-	 * private void simulateUnits(float dt) { float speed = 3f; float maxStep =
-	 * speed * dt;
-	 * 
-	 * for (UnitState u : units.values()) { if (!u.getHasTarget()) continue;
-	 * 
-	 * float dx = u.getTargetX() - u.getX(); float dy = u.getTargetY() - u.getY();
-	 * float distSq = dx * dx + dy * dy;
-	 * 
-	 * if (distSq < 0.0001f) { u.setPosition(u.getTargetX(), u.getTargetY());
-	 * u.clearTarget(); continue; }
-	 * 
-	 * float dist = (float) Math.sqrt(distSq);
-	 * 
-	 * if (dist <= maxStep) { u.setPosition(u.getTargetX(), u.getTargetY());
-	 * u.clearTarget(); } else { float nx = dx / dist; float ny = dy / dist;
-	 * u.setPosition(u.getX() + nx * maxStep, u.getY() + ny * maxStep); } } }
-	 */
 
 	private void simulateUnits(float dt) {
 		for (UnitState u : units.values()) {
@@ -339,7 +535,6 @@ public class MatchSession {
 			if (targetId <= 0)
 				continue;
 
-			// --- Атака по будівлі ---
 			if (attacker.isAttackTargetBuilding()) {
 				BuildingState targetBuilding = buildings.get(targetId);
 				if (targetBuilding == null) {
@@ -373,7 +568,6 @@ public class MatchSession {
 				continue;
 			}
 
-			// --- Атака по юніту ---
 			UnitState target = units.get(targetId);
 			if (target == null) {
 				attacker.clearAttackTarget();
@@ -410,6 +604,13 @@ public class MatchSession {
 		}
 
 		if (deadUnitId != null) {
+			UnitState deadUnit = units.get(deadUnitId);
+			if (deadUnit != null) {
+			    PlayerState owner = playersState.get(deadUnit.getOwnerPlayerId());
+			    if (owner != null) {
+			        owner.removeUsedSupply(deadUnit.getSupplyCost());
+			    }
+			}
 			units.remove(deadUnitId);
 		}
 
@@ -444,16 +645,10 @@ public class MatchSession {
 	    BuildingState building = buildings.get(buildingId);
 	    if (building == null) return;
 
-	    int newUnitId = generateNextUnitId();
+	    UnitStats stats = getStatsForUnitType(unitType);
+	    if (stats == null) return;
 
-	    UnitStats stats;
-	    if ("swordsman".equals(unitType)) {
-	        stats = new UnitStats(100, 2f, 10, 1f, 3f);
-	    } else if ("archer".equals(unitType)) {
-	        stats = new UnitStats(70, 5f, 7, 1.2f, 2.5f);
-	    } else {
-	        return;
-	    }
+	    int newUnitId = generateNextUnitId();
 
 	    float spawnX = building.getX() + 1.5f;
 	    float spawnY = building.getY();
@@ -471,8 +666,12 @@ public class MatchSession {
 	    );
 
 	    units.put(newUnitId, newUnit);
-	}
 
+	    PlayerState player = playersState.get(building.getOwnerPlayerId());
+	    if (player != null) {
+	        player.addUsedSupply(stats.getSupplyCost());
+	    }
+	}
 	
 	private static float clamp(float v, float min, float max) {
 		if (v < min)
@@ -522,8 +721,41 @@ public class MatchSession {
 					.append(",\"y\":").append(b.getY()).append(",\"hp\":").append(b.getHp()).append(",\"maxHp\":")
 					.append(b.getMaxHp()).append('}');
 		}
+		
+		// players
+		sb.append(",\"players\":[");
+		first = true;
+		for (PlayerState p : playersState.values()) {
+		    if (!first) sb.append(',');
+		    first = false;
+
+		    sb.append("{\"playerId\":").append(p.getPlayerId())
+		      .append(",\"gold\":").append(p.getGold())
+		      .append(",\"lumber\":").append(p.getLumber())
+		      .append(",\"usedSupply\":").append(p.getUsedSupply())
+		      .append(",\"maxSupply\":").append(p.getMaxSupply())
+		      .append('}');
+		}
+		
 		sb.append("]");
 
+		sb.append(",\"resources\":[");
+		boolean firstRes = true;
+
+		for (ResourceNode r : resourceNodes.values()) {
+		    if (!firstRes) sb.append(',');
+		    firstRes = false;
+
+		    sb.append("{\"id\":").append(r.id)
+		      .append(",\"type\":\"").append(r.type).append("\"")
+		      .append(",\"x\":").append(r.x)
+		      .append(",\"y\":").append(r.y)
+		      .append(",\"amount\":").append(r.amount)
+		      .append("}");
+		}
+
+		sb.append("]");
+		
 		sb.append("}");
 		return sb.toString();
 	}
@@ -534,6 +766,10 @@ public class MatchSession {
 	        if (id > maxId) maxId = id;
 	    }
 	    return maxId + 1;
+	}
+	
+	private UnitStats getStatsForUnitType(String unitType) {
+		return unitStatsMap.get(unitType);
 	}
 
 	

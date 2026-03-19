@@ -15,7 +15,10 @@ public class UnitState {
 	private int attackTargetId = -1;
 	private float attackTimer = 0f;
 	private boolean attackTargetIsBuilding = false;
-
+	
+	private int gatherTargetId = -1;
+	private float gatherTimer = 0f;
+	
 	public UnitState(int id, int ownerPlayerId, float x, float y, float targetX, float targetY, boolean hasTarget,
 			UnitStats stats, String unitType) {
 		this.id = id;
@@ -130,6 +133,18 @@ public class UnitState {
 	public String getUnitType() {
 		return unitType;
 	}
+	
+	public int getGoldCost() {
+		return stats.getGoldCost();
+	}
+	
+	public int getLumberCost() {
+		return stats.getLumberCost();
+	}
+	
+	public int getSupplyCost() {
+		return stats.getSupplyCost();
+	}
 
 	public void setAttackTargetIsBuilding(boolean value) {
 		this.attackTargetIsBuilding = value;
@@ -138,4 +153,33 @@ public class UnitState {
 	public boolean isAttackTargetBuilding() {
 		return attackTargetIsBuilding;
 	}
+	
+	public void setGatherTarget(int resourceId) {
+	    this.gatherTargetId = resourceId;
+
+	    clearTarget();
+	    clearAttackTarget();
+	}
+
+	public int getGatherTarget() {
+	    return gatherTargetId;
+	}
+
+	public void clearGatherTarget() {
+	    this.gatherTargetId = -1;
+	    this.gatherTimer = 0f;
+	}
+	
+	public void addGatherTime(float dt) {
+	    this.gatherTimer += dt;
+	}
+
+	public boolean isReadyToGather() {
+	    return gatherTimer >= 2f;
+	}
+
+	public void resetGatherTimer() {
+	    this.gatherTimer = 0f;
+	}
+	
 }
