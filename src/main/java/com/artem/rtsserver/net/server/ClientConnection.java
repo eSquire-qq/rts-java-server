@@ -22,11 +22,10 @@ public class ClientConnection {
     }
 
     public void sendLine(String json) {
-        // Сервер -> клієнт
+
         out.println(json);
         out.flush();
-
-        // Лог для дебагу
+        
         System.out.println("[TO player=" + playerId + "] " + json);
     }
 
