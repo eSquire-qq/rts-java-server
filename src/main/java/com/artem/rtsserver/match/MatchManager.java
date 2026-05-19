@@ -17,7 +17,6 @@ public class MatchManager {
     private final Map<String, MatchSession> matchesById = new HashMap<>();
     private final Map<Integer, String> matchIdByPlayerId = new HashMap<>();
 
-    // ✅ Spring сам підставить PlayerDAO
     private final PlayerDAO playerDAO;
 
     @Autowired
@@ -34,7 +33,6 @@ public class MatchManager {
             matchId = String.valueOf(id);
         } while (matchesById.containsKey(matchId));
 
-        // ✅ Передаємо playerDAO в сесію
         MatchSession session = new MatchSession(matchId, players, this, playerDAO);
         matchesById.put(matchId, session);
 
@@ -51,8 +49,10 @@ public class MatchManager {
     }
 
     public void endMatchSession(String matchId) {
-        MatchSession session = matchesById.get(matchId);
-        if (session == null) return;
+        MatchSession session = matchesById.remove(matchId);
+
+        if (session == null)
+            return;
 
         session.stop();
 
@@ -61,7 +61,7 @@ public class MatchManager {
             player.getConn().clearMatchId();
         }
 
-        matchesById.remove(matchId);
+        System.out.println("MATCH ENDED: " + matchId);
     }
 
     public MatchSession getMatchByPlayer(int playerId) {

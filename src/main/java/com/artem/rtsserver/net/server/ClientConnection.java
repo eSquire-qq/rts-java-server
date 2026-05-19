@@ -5,7 +5,10 @@ import java.net.Socket;
 
 public class ClientConnection {
 
-    private final int playerId;
+    private int playerId;
+    private String username;
+    private String accessToken;
+
     private final Socket socket;
     private final PrintWriter out;
 
@@ -21,11 +24,28 @@ public class ClientConnection {
         return playerId;
     }
 
-    public void sendLine(String json) {
+    public void authenticate(int playerId, String username, String accessToken) {
+        this.playerId = playerId;
+        this.username = username;
+        this.accessToken = accessToken;
+    }
 
+    public boolean isAuthenticated() {
+        return playerId > 0 && accessToken != null && !accessToken.isBlank();
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public String getAccessToken() {
+        return accessToken;
+    }
+
+    public void sendLine(String json) {
         out.println(json);
         out.flush();
-        
+
         System.out.println("[TO player=" + playerId + "] " + json);
     }
 
@@ -46,6 +66,9 @@ public class ClientConnection {
     }
 
     public void closeQuietly() {
-        try { socket.close(); } catch (Exception ignored) {}
+        try {
+            socket.close();
+        } catch (Exception ignored) {
+        }
     }
 }
