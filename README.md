@@ -68,11 +68,6 @@ src/main/java/...
   [model/         – game state and entities]
 ```
 
-## Roadmap
-
-- [ ] [Planned feature 1]
-- [ ] [Planned feature 2]
-
 ## Author
 
 Artem Teslia – [GitHub](https://github.com/eSquire-qq)
